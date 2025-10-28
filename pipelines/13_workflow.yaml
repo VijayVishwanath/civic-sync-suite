@@ -1,0 +1,190 @@
+# Event-driven workflow using Pub/Sub + Cloud Workflows
+
+pubsub_topics:
+  - name: tickets.new
+    description: New citizen tickets submitted
+    schema: ticket_input_schema
+    
+  - name: tickets.ready_for_scoring
+    description: Cleansed tickets ready for ML scoring
+    
+  - name: tickets.scored
+    description: Tickets with ML priority scores
+    
+  - name: tickets.routed
+    description: Tickets assigned to departments
+    
+  - name: tickets.dlq
+    description: Dead letter queue for failed processing
+
+subscriptions:
+  - name: score-tickets-sub
+    topic: tickets.ready_for_scoring
+    push_endpoint: https://cloud-run-scorer.run.app/score
+    ack_deadline: 30s
+    retry_policy:
+      minimum_backoff: 10s
+      maximum_backoff: 600s
+    dead_letter_policy:
+      dead_letter_topic: tickets.dlq
+      max_delivery_attempts: 5
+
+workflows:
+  ticket_processing:
+    main:
+      params: [event]
+      steps:
+        - init:
+            assign:
+              - ticket_id: ${event.data.ticket_id}
+              - category: ${event.data.category}
+              - ward: ${event.data.ward}
+        
+        - log_start:
+            call: sys.log
+            args:
+              text: ${"Processing ticket " + ticket_id}
+              severity: INFO
+        
+        - call_dataflow:
+            call: http.post
+            args:
+              url: https://dataflow.googleapis.com/v1b3/projects/PROJECT_ID/locations/asia-south1/templates:launch
+              auth:
+                type: OAuth2
+              body:
+                jobName: ${"cleanse-ticket-" + ticket_id}
+                parameters:
+                  inputTopic: "tickets.new"
+                  outputDataset: "municipal_data"
+            result: dataflow_job
+        
+        - wait_for_features:
+            call: sys.sleep
+            args:
+              seconds: 5
+        
+        - score_ticket:
+            call: http.post
+            args:
+              url: https://VERTEX_ENDPOINT/predict
+              auth:
+                type: OAuth2
+              body:
+                instances:
+                  - ticket_id: ${ticket_id}
+                    ward: ${ward}
+                    category: ${category}
+            result: prediction
+        
+        - check_priority:
+            switch:
+              - condition: ${prediction.priority_score >= 0.8}
+                next: high_priority_flow
+              - condition: ${prediction.priority_score >= 0.5}
+                next: medium_priority_flow
+              - condition: true
+                next: low_priority_flow
+        
+        - high_priority_flow:
+            steps:
+              - notify_supervisor:
+                  call: http.post
+                  args:
+                    url: https://NOTIFICATION_SERVICE/alert
+                    body:
+                      ticket_id: ${ticket_id}
+                      priority: "HIGH"
+                      score: ${prediction.priority_score}
+              
+              - auto_assign:
+                  call: http.post
+                  args:
+                    url: https://API_ENDPOINT/case/${ticket_id}/assign
+                    body:
+                      department: ${prediction.recommended_department}
+                      urgent: true
+              
+              - publish_routed:
+                  call: googleapis.pubsub.v1.projects.topics.publish
+                  args:
+                    topic: ${"projects/PROJECT_ID/topics/tickets.routed"}
+                    messages:
+                      - data: ${base64.encode(json.encode(prediction))}
+              next: log_completion
+        
+        - medium_priority_flow:
+            steps:
+              - add_to_queue:
+                  call: http.post
+                  args:
+                    url: https://API_ENDPOINT/queue/add
+                    body:
+                      ticket_id: ${ticket_id}
+                      score: ${prediction.priority_score}
+              next: log_completion
+        
+        - low_priority_flow:
+            steps:
+              - schedule_weekly:
+                  call: http.post
+                  args:
+                    url: https://API_ENDPOINT/schedule/weekly
+                    body:
+                      ticket_id: ${ticket_id}
+              next: log_completion
+        
+        - log_completion:
+            call: sys.log
+            args:
+              text: ${"Completed processing " + ticket_id}
+              severity: INFO
+        
+        - write_audit:
+            call: googleapis.bigquery.v2.tabledata.insertAll
+            args:
+              projectId: PROJECT_ID
+              datasetId: municipal_data
+              tableId: audit_logs
+              body:
+                rows:
+                  - json:
+                      audit_id: ${sys.get_env("WORKFLOW_EXECUTION_ID")}
+                      event_timestamp: ${text.split(sys.now(), ".")[0] + "Z"}
+                      ticket_id: ${ticket_id}
+                      action: "AI_PRIORITIZATION"
+                      user_id: "system"
+                      model_version: ${prediction.model_version}
+                      model_score: ${prediction.priority_score}
+                      input_hash: ${prediction.input_hash}
+                      explanation: ${prediction.explanation}
+        
+        - return_result:
+            return:
+              status: "SUCCESS"
+              ticket_id: ${ticket_id}
+              priority_score: ${prediction.priority_score}
+
+error_handling:
+  retry_policy:
+    max_attempts: 3
+    backoff:
+      initial_delay: 1s
+      max_delay: 60s
+      multiplier: 2
+  
+  on_error:
+    - log_error:
+        call: sys.log
+        args:
+          text: ${"Error processing ticket: " + error.message}
+          severity: ERROR
+    
+    - publish_to_dlq:
+        call: googleapis.pubsub.v1.projects.topics.publish
+        args:
+          topic: ${"projects/PROJECT_ID/topics/tickets.dlq"}
+          messages:
+            - data: ${base64.encode(json.encode(event))}
+              attributes:
+                error: ${error.message}

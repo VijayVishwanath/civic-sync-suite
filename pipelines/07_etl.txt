@@ -1,0 +1,123 @@
+DATAFLOW ETL PIPELINE PSEUDOCODE
+==================================
+
+Pipeline: IngestAndEnrichTickets
+Input: Pub/Sub topic "tickets.new"
+Output: BigQuery municipal_data.raw_tickets, cleansed_tickets, ml_features
+Windowing: Fixed 1-minute windows
+
+STEP 1: READ & PARSE
+--------------------
+messages = ReadFromPubSub("projects/PROJECT_ID/topics/tickets.new")
+tickets = messages | Parse JSON
+tickets = tickets | Add ingestion timestamp
+
+STEP 2: PII HASHING
+-------------------
+def hash_pii_fields(ticket):
+    if ticket.citizen_id:
+        ticket.citizen_id_hash = SHA256(ticket.citizen_id)
+        del ticket.citizen_id
+    if ticket.phone:
+        ticket.phone_hash = SHA256(ticket.phone)
+        del ticket.phone
+    return ticket
+
+tickets = tickets | Map(hash_pii_fields)
+
+STEP 3: DLP SCANNING (optional)
+--------------------------------
+def dlp_scan(ticket):
+    dlp_client = DLPClient()
+    findings = dlp_client.inspect_content(ticket.description)
+    ticket._dlp_scanned = True
+    ticket._dlp_findings = [f.info_type for f in findings]
+    return ticket
+
+tickets = tickets | Map(dlp_scan)
+
+STEP 4: WRITE RAW
+-----------------
+tickets | WriteToBigQuery(
+    table="municipal_data.raw_tickets",
+    write_disposition=WRITE_APPEND,
+    create_disposition=CREATE_NEVER
+)
+
+STEP 5: CLEANSING
+-----------------
+def cleanse_ticket(ticket):
+    return {
+        'ticket_id': ticket.ticket_id,
+        'citizen_id_hash': ticket.citizen_id_hash,
+        'submitted_at': ticket.submitted_at,
+        'ward': ticket.location.ward,
+        'pincode': ticket.location.pincode,
+        'lat': ticket.location.lat,
+        'lon': ticket.location.lon,
+        'category': ticket.category,
+        'subcategory': ticket.subcategory,
+        'description_clean': clean_text(ticket.description),
+        'photo_count': len(ticket.photos),
+        'language': ticket.language,
+        'channel': ticket.channel,
+        'sentiment_score': analyze_sentiment(ticket.description)
+    }
+
+cleansed = tickets | Map(cleanse_ticket)
+cleansed | WriteToBigQuery("municipal_data.cleansed_tickets")
+
+STEP 6: FEATURE ENGINEERING
+----------------------------
+def enrich_features(ticket):
+    # Time features
+    dt = ticket.submitted_at
+    ticket.hour_of_day = dt.hour
+    ticket.day_of_week = dt.weekday()
+    ticket.is_weekend = dt.weekday() >= 5
+    
+    # Ward aggregates (lookup from Feature Store or BQ)
+    ward_stats = lookup_ward_features(ticket.ward)
+    ticket.population_density = ward_stats.population_density
+    ticket.ward_tickets_7d = ward_stats.total_tickets_7d
+    ticket.ward_escalation_rate_7d = ward_stats.escalation_rate_7d
+    
+    # Citizen history (lookup)
+    citizen_stats = lookup_citizen_history(ticket.citizen_id_hash)
+    ticket.citizen_previous_tickets_30d = citizen_stats.count_30d
+    ticket.citizen_previous_escalations = citizen_stats.escalations
+    
+    # Category stats
+    category_stats = lookup_category_stats(ticket.category)
+    ticket.category_escalation_rate_30d = category_stats.escalation_rate
+    
+    return ticket
+
+features = cleansed | Map(enrich_features)
+features | WriteToBigQuery("municipal_data.ml_features")
+
+STEP 7: UPDATE FEATURE STORE
+-----------------------------
+features | WriteToVertexFeatureStore(
+    entity_type="ticket",
+    feature_ids=["ward_tickets_7d", "escalation_rate_7d", "avg_response_time"]
+)
+
+STEP 8: PUBLISH TO NEXT TOPIC
+------------------------------
+features | Map(lambda x: {"ticket_id": x.ticket_id, "ready": True})
+         | WriteToPubSub("projects/PROJECT_ID/topics/tickets.ready_for_scoring")
+
+ERROR HANDLING
+--------------
+- Dead letter queue: "tickets.dlq"
+- Retry logic: 3 attempts with exponential backoff
+- Alert on DLP findings count > threshold
+- Monitor lag: alert if > 5 minutes
+
+COST OPTIMIZATIONS
+------------------
+- Use shuffle service for large windows
+- Batch writes to BQ (1000 rows or 30s)
+- Cache Feature Store lookups (5min TTL)
+- Use Dataflow Flex templates for auto-scaling

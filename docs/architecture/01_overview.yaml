@@ -1,0 +1,30 @@
+project: AI-Powered Municipal Governance
+region: Maharashtra, India
+stack: GCP
+
+objectives:
+  - Predict citizen ticket escalations with AUC ≥0.75
+  - Auto-prioritize urgent municipal works
+  - Route tickets to correct department with 90%+ accuracy
+  - Provide RAG-based citizen chat (Gemini)
+  - Maintain full audit trail for governance
+
+metrics:
+  - ticket_triage_time_p50: <5min
+  - api_latency_p95: <500ms
+  - model_auc: ≥0.75
+  - auto_routing_accuracy: ≥90%
+  - data_freshness: <1hr
+
+constraints:
+  - Privacy: DPDP Act 2023 compliant
+  - PII: Hash/mask before storage
+  - Audit: 7yr retention
+  - Cost: <₹50k/month for 100k tickets
+  - Latency: Real-time scoring <200ms
+
+compliance:
+  - DPDP_Act_2023: true
+  - data_localization: asia-south1
+  - consent_management: explicit_opt_in
+  - right_to_erasure: supported

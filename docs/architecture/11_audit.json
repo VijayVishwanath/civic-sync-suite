@@ -1,0 +1,153 @@
+{
+  "audit_log_schema": {
+    "audit_id": {
+      "type": "STRING",
+      "required": true,
+      "description": "Unique audit event ID (UUID)"
+    },
+    "event_timestamp": {
+      "type": "TIMESTAMP",
+      "required": true,
+      "description": "ISO 8601 timestamp of event"
+    },
+    "ticket_id": {
+      "type": "STRING",
+      "required": false,
+      "description": "Reference to ticket if applicable"
+    },
+    "user_id": {
+      "type": "STRING",
+      "required": true,
+      "description": "Staff user ID or system service account"
+    },
+    "action": {
+      "type": "STRING",
+      "required": true,
+      "enum": [
+        "AI_PRIORITIZATION",
+        "MANUAL_OVERRIDE",
+        "DEPARTMENT_ASSIGNMENT",
+        "TICKET_RESOLUTION",
+        "MODEL_PREDICTION",
+        "CITIZEN_QUERY",
+        "DATA_EXPORT",
+        "PII_ACCESS"
+      ]
+    },
+    "model_version": {
+      "type": "STRING",
+      "required": false,
+      "description": "Model version if action involves ML prediction"
+    },
+    "model_score": {
+      "type": "FLOAT64",
+      "required": false,
+      "description": "Raw model output (priority score)"
+    },
+    "input_hash": {
+      "type": "STRING",
+      "required": true,
+      "description": "SHA256 hash of input data for reproducibility"
+    },
+    "explanation": {
+      "type": "JSON",
+      "required": false,
+      "description": "SHAP values and feature contributions",
+      "schema": {
+        "features": [
+          {"name": "STRING", "value": "ANY", "contribution": "FLOAT64"}
+        ],
+        "baseline_score": "FLOAT64"
+      }
+    },
+    "ip_address": {
+      "type": "STRING",
+      "required": true,
+      "description": "Source IP (hashed for privacy)"
+    },
+    "session_id": {
+      "type": "STRING",
+      "required": true,
+      "description": "User session identifier"
+    },
+    "consent_version": {
+      "type": "STRING",
+      "required": false,
+      "description": "Citizen consent version if PII accessed"
+    },
+    "result": {
+      "type": "STRING",
+      "required": true,
+      "enum": ["SUCCESS", "FAILURE", "PARTIAL"]
+    },
+    "error_message": {
+      "type": "STRING",
+      "required": false
+    }
+  },
+  
+  "retention_policy": {
+    "default_retention_days": 2555,
+    "description": "7 years as per governance requirements",
+    "lifecycle_rules": [
+      {
+        "condition": {"age_days": 90},
+        "action": "MOVE_TO_COLDLINE_STORAGE"
+      },
+      {
+        "condition": {"age_days": 365},
+        "action": "MOVE_TO_ARCHIVE_STORAGE"
+      },
+      {
+        "condition": {"age_days": 2555},
+        "action": "DELETE"
+      }
+    ]
+  },
+  
+  "access_control": {
+    "roles": {
+      "audit_viewer": {
+        "permissions": ["SELECT"],
+        "principals": ["group:compliance@municipality.gov.in", "group:management@municipality.gov.in"]
+      },
+      "audit_admin": {
+        "permissions": ["SELECT", "EXPORT"],
+        "principals": ["group:security-ops@municipality.gov.in"]
+      },
+      "system_writer": {
+        "permissions": ["INSERT"],
+        "principals": ["serviceAccount:ml-service@PROJECT_ID.iam.gserviceaccount.com"]
+      }
+    }
+  },
+  
+  "compliance_mappings": {
+    "DPDP_Act_2023": {
+      "data_accountability": "audit_logs track all PII access",
+      "right_to_explanation": "explanation field provides model rationale",
+      "audit_trail": "7yr retention meets regulatory requirement"
+    }
+  },
+  
+  "alerting_rules": [
+    {
+      "name": "High PII Access Rate",
+      "condition": "COUNT(action = 'PII_ACCESS') > 100 per hour",
+      "severity": "HIGH",
+      "notification": "security-ops@municipality.gov.in"
+    },
+    {
+      "name": "Unusual Manual Overrides",
+      "condition": "COUNT(action = 'MANUAL_OVERRIDE') > 50 per day",
+      "severity": "MEDIUM",
+      "notification": "management@municipality.gov.in"
+    },
+    {
+      "name": "Model Prediction Failures",
+      "condition": "COUNT(action = 'MODEL_PREDICTION' AND result = 'FAILURE') > 10 per hour",
+      "severity": "CRITICAL",
+      "notification": "on-call-ml-engineer"
+    }
+  ]
+}

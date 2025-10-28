@@ -1,0 +1,128 @@
+{
+  "consent_management": {
+    "framework": "DPDP_Act_2023",
+    "consent_types": [
+      {
+        "type": "ticket_submission",
+        "purpose": "Process and resolve municipal service requests",
+        "data_collected": [
+          "phone_number",
+          "location",
+          "description",
+          "photos"
+        ],
+        "retention_period": "7_years",
+        "withdrawal_allowed": false,
+        "justification": "Legal obligation for municipal governance"
+      },
+      {
+        "type": "analytics_tracking",
+        "purpose": "Improve service quality and response times",
+        "data_collected": [
+          "usage_patterns",
+          "interaction_logs"
+        ],
+        "retention_period": "2_years",
+        "withdrawal_allowed": true
+      },
+      {
+        "type": "ml_training",
+        "purpose": "Train AI models for ticket prioritization",
+        "data_collected": [
+          "ticket_metadata",
+          "resolution_outcomes",
+          "anonymized_patterns"
+        ],
+        "retention_period": "indefinite",
+        "withdrawal_allowed": true,
+        "anonymization": "required"
+      }
+    ]
+  },
+  
+  "consent_schema": {
+    "consent_id": "STRING (UUID)",
+    "citizen_id_hash": "STRING",
+    "consent_type": "ENUM",
+    "version": "STRING (v1.0)",
+    "granted_at": "TIMESTAMP",
+    "withdrawn_at": "TIMESTAMP (nullable)",
+    "ip_address_hash": "STRING",
+    "language": "STRING (en|mr|hi)",
+    "explicit_opt_in": "BOOLEAN"
+  },
+  
+  "sql_example": "-- BigQuery consent table\nCREATE TABLE municipal_data.citizen_consent (\n  consent_id STRING NOT NULL,\n  citizen_id_hash STRING NOT NULL,\n  consent_type STRING NOT NULL,\n  consent_version STRING DEFAULT 'v1.0',\n  purpose STRING NOT NULL,\n  granted_at TIMESTAMP NOT NULL,\n  withdrawn_at TIMESTAMP,\n  ip_address_hash STRING,\n  language STRING DEFAULT 'en',\n  explicit_opt_in BOOL DEFAULT TRUE,\n  \n  -- Audit fields\n  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP(),\n  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP()\n)\nPARTITION BY DATE(granted_at)\nCLUSTER BY citizen_id_hash, consent_type;\n\n-- Policy tag for consent data\nALTER TABLE municipal_data.citizen_consent\n  ALTER COLUMN citizen_id_hash SET OPTIONS (\n    policy_tags=('projects/PROJECT_ID/locations/asia-south1/taxonomies/TAXONOMY_ID/policyTags/PII_HIGH')\n  );",
+  
+  "consent_ui_flow": [
+    {
+      "step": 1,
+      "screen": "consent_introduction",
+      "content": {
+        "en": "We collect your information to resolve municipal issues. Your data is protected under DPDP Act 2023.",
+        "mr": "आम्ही नगरपालिका समस्या सोडवण्यासाठी तुमची माहिती गोळा करतो. तुमचा डेटा DPDP कायदा २०२३ अंतर्गत संरक्षित आहे."
+      }
+    },
+    {
+      "step": 2,
+      "screen": "data_usage",
+      "content": {
+        "en": "We use AI to prioritize urgent tickets. Your data helps improve service quality.",
+        "mr": "आम्ही तातडीच्या तक्रारींना प्राधान्य देण्यासाठी AI वापरतो."
+      }
+    },
+    {
+      "step": 3,
+      "screen": "consent_options",
+      "checkboxes": [
+        {
+          "id": "required_processing",
+          "label": "Process my ticket (Required)",
+          "required": true,
+          "default": true
+        },
+        {
+          "id": "analytics",
+          "label": "Use anonymized data for analytics (Optional)",
+          "required": false,
+          "default": false
+        },
+        {
+          "id": "ml_training",
+          "label": "Use anonymized data for AI improvement (Optional)",
+          "required": false,
+          "default": false
+        }
+      ]
+    }
+  ],
+  
+  "data_subject_rights": {
+    "right_to_access": {
+      "endpoint": "/api/my-data",
+      "response_time": "7_days"
+    },
+    "right_to_erasure": {
+      "endpoint": "/api/delete-my-data",
+      "restrictions": "Cannot delete tickets under legal hold",
+      "response_time": "30_days"
+    },
+    "right_to_portability": {
+      "endpoint": "/api/export-my-data",
+      "format": "JSON",
+      "response_time": "7_days"
+    },
+    "right_to_correction": {
+      "endpoint": "/api/update-my-data",
+      "response_time": "immediate"
+    }
+  },
+  
+  "withdrawal_process": {
+    "method": "online_form",
+    "url": "/withdraw-consent",
+    "verification": "otp_based",
+    "effect": "stop_future_processing",
+    "historical_data": "retained_for_legal_compliance"
+  }
+}

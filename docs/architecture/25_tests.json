@@ -1,0 +1,7 @@
+{
+  "unit_tests": {"framework": "pytest", "coverage": ">80%"},
+  "integration_tests": {"dataflow": "beam.testing", "api": "requests"},
+  "model_tests": {"auc": ">0.75", "bias": "fairness_indicators"},
+  "load_tests": {"tool": "Locust", "target": "1000 rps"},
+  "drift_tests": {"frequency": "daily", "tool": "Evidently"}
+}

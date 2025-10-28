@@ -1,0 +1,221 @@
+{
+  "gcp_security_controls": {
+    "data_encryption": {
+      "at_rest": {
+        "method": "CMEK",
+        "service": "Cloud KMS",
+        "key_location": "asia-south1",
+        "rotation_period": "90_days",
+        "resources": [
+          "BigQuery datasets",
+          "Cloud Storage buckets",
+          "Pub/Sub topics",
+          "Vertex AI models"
+        ]
+      },
+      "in_transit": {
+        "method": "TLS_1.3",
+        "certificate_authority": "Google_Managed",
+        "mTLS_required": true
+      }
+    },
+    
+    "vpc_service_controls": {
+      "enabled": true,
+      "perimeter_name": "municipal-ai-perimeter",
+      "protected_services": [
+        "bigquery.googleapis.com",
+        "storage.googleapis.com",
+        "aiplatform.googleapis.com",
+        "dataflow.googleapis.com"
+      ],
+      "ingress_policies": [
+        {
+          "source": "internet",
+          "allowed_services": ["cloudfunctions.googleapis.com"],
+          "identity_type": "ANY_SERVICE_ACCOUNT",
+          "condition": "request.auth.claims.email_verified == true"
+        }
+      ],
+      "egress_policies": [
+        {
+          "destination": "external",
+          "allowed_services": ["aiplatform.googleapis.com"],
+          "identity_type": "SERVICE_ACCOUNT",
+          "service_accounts": ["ml-service@PROJECT_ID.iam.gserviceaccount.com"]
+        }
+      ]
+    },
+    
+    "iam_roles": {
+      "service_accounts": [
+        {
+          "name": "dataflow-worker@PROJECT_ID.iam.gserviceaccount.com",
+          "roles": [
+            "roles/bigquery.dataEditor",
+            "roles/storage.objectViewer",
+            "roles/pubsub.subscriber"
+          ],
+          "description": "Dataflow pipeline execution"
+        },
+        {
+          "name": "ml-service@PROJECT_ID.iam.gserviceaccount.com",
+          "roles": [
+            "roles/aiplatform.user",
+            "roles/bigquery.dataViewer",
+            "roles/storage.objectViewer"
+          ],
+          "description": "Vertex AI model serving"
+        },
+        {
+          "name": "cloud-run-api@PROJECT_ID.iam.gserviceaccount.com",
+          "roles": [
+            "roles/aiplatform.user",
+            "roles/pubsub.publisher",
+            "roles/secretmanager.secretAccessor"
+          ],
+          "description": "Cloud Run API service"
+        }
+      ],
+      "workload_identity": {
+        "enabled": true,
+        "kubernetes_service_accounts": []
+      }
+    },
+    
+    "row_level_security": {
+      "bigquery_policies": [
+        {
+          "table": "municipal_data.cleansed_tickets",
+          "policy_name": "citizen_own_tickets",
+          "filter": "citizen_id_hash = SESSION_USER()",
+          "grant_to": ["group:citizens@municipality.gov.in"]
+        },
+        {
+          "table": "municipal_data.cleansed_tickets",
+          "policy_name": "staff_all_tickets",
+          "filter": "TRUE",
+          "grant_to": ["group:staff@municipality.gov.in"]
+        },
+        {
+          "table": "municipal_data.audit_logs",
+          "policy_name": "audit_viewers",
+          "filter": "TRUE",
+          "grant_to": ["group:compliance@municipality.gov.in", "group:security-ops@municipality.gov.in"]
+        }
+      ]
+    },
+    
+    "column_masking": {
+      "policies": [
+        {
+          "name": "mask_citizen_id",
+          "rule": "IF SESSION_USER() IN ('ml-service@PROJECT_ID.iam.gserviceaccount.com') THEN value ELSE SHA256(value)",
+          "applies_to": ["citizen_id_hash", "phone_hash"]
+        }
+      ]
+    },
+    
+    "dlp_scanning": {
+      "enabled": true,
+      "scan_frequency": "on_ingestion",
+      "info_types": [
+        "PHONE_NUMBER",
+        "EMAIL_ADDRESS",
+        "INDIA_AADHAAR_NUMBER",
+        "INDIA_PAN_NUMBER",
+        "PERSON_NAME",
+        "STREET_ADDRESS"
+      ],
+      "actions": [
+        {
+          "type": "DEIDENTIFY",
+          "method": "CRYPTO_HASH",
+          "key": "projects/PROJECT_ID/locations/asia-south1/keyRings/dlp-ring/cryptoKeys/dlp-key"
+        },
+        {
+          "type": "ALERT",
+          "threshold": "HIGH",
+          "notification": "security-ops@municipality.gov.in"
+        }
+      ]
+    },
+    
+    "network_security": {
+      "private_google_access": true,
+      "cloud_nat": {
+        "enabled": true,
+        "log_config": {
+          "enable": true,
+          "filter": "ALL"
+        }
+      },
+      "cloud_armor": {
+        "enabled": true,
+        "rules": [
+          {
+            "priority": 1000,
+            "action": "deny(403)",
+            "match": {
+              "expr": "origin.region_code != 'IN'"
+            },
+            "description": "Block non-India traffic"
+          },
+          {
+            "priority": 2000,
+            "action": "rate_based_ban",
+            "rate_limit_options": {
+              "rate_limit_threshold": {
+                "count": 1000,
+                "interval_sec": 60
+              },
+              "ban_duration_sec": 600
+            }
+          }
+        ]
+      }
+    },
+    
+    "secret_management": {
+      "service": "Secret Manager",
+      "secrets": [
+        {
+          "name": "gemini-api-key",
+          "rotation": "automatic_90days",
+          "access": ["cloud-run-api@PROJECT_ID.iam.gserviceaccount.com"]
+        },
+        {
+          "name": "db-connection-string",
+          "rotation": "manual",
+          "access": ["dataflow-worker@PROJECT_ID.iam.gserviceaccount.com"]
+        }
+      ]
+    },
+    
+    "audit_logging": {
+      "admin_activity": {
+        "enabled": true,
+        "log_type": "ADMIN_READ",
+        "retention": "400_days"
+      },
+      "data_access": {
+        "enabled": true,
+        "log_type": "DATA_READ",
+        "services": ["bigquery.googleapis.com", "storage.googleapis.com"],
+        "retention": "400_days"
+      }
+    }
+  },
+  
+  "compliance_certifications": [
+    "ISO_27001",
+    "SOC_2_Type_II",
+    "DPDP_Act_2023"
+  ],
+  
+  "penetration_testing": {
+    "frequency": "quarterly",
+    "scope": ["API endpoints", "authentication", "data access"],
+    "vendor": "external_auditor"
+  }
+}

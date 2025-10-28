@@ -1,0 +1,26 @@
+swagger: "2.0"
+x-google-backend:
+  address: https://cloud-run-api.run.app
+  jwt_audience: municipal-api
+
+securityDefinitions:
+  api_key:
+    type: apiKey
+    name: X-API-Key
+    in: header
+
+security:
+  - api_key: []
+
+x-google-management:
+  metrics:
+    - name: request-count
+      valueType: INT64
+      metricKind: DELTA
+  quota:
+    limits:
+      - name: request-per-minute
+        metric: request-count
+        unit: 1/min/{project}
+        values:
+          STANDARD: 100

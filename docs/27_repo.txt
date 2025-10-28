@@ -1,0 +1,30 @@
+municipal-ai-platform/
+├── docs/
+│   └── architecture/
+│       ├── 01_overview.yaml
+│       ├── 02_architecture.txt
+│       ├── 03_raci.csv
+│       └── [04-27 files]
+├── infra/
+│   └── 17_infra.tf
+├── bq/
+│   ├── 06_bigquery.sql
+│   └── 08_features.sql
+├── pipelines/
+│   ├── 05_synthdata.py
+│   ├── 07_etl.txt
+│   ├── 13_workflow.yaml
+│   └── 16_retry.yaml
+├── vertex/
+│   └── 09_vertex.cfg
+├── api/
+│   ├── 12_api.yaml
+│   ├── 21_gateway.yaml
+│   └── 22_types.ts
+├── security/
+│   ├── 14_security.json
+│   └── 15_consent.json
+├── .github/workflows/
+│   └── 18_cicd.yml
+└── data/
+    └── synthetic_tickets_50k.jsonl

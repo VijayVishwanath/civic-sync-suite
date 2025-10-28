@@ -1,0 +1,149 @@
+# Retry and fault tolerance configuration
+
+retry_policies:
+  api_calls:
+    max_attempts: 3
+    initial_delay: 1s
+    max_delay: 30s
+    multiplier: 2.0
+    retry_on:
+      - UNAVAILABLE
+      - DEADLINE_EXCEEDED
+      - INTERNAL
+    do_not_retry:
+      - INVALID_ARGUMENT
+      - UNAUTHENTICATED
+      - PERMISSION_DENIED
+  
+  ml_predictions:
+    max_attempts: 2
+    initial_delay: 500ms
+    max_delay: 5s
+    multiplier: 2.0
+    fallback: use_rule_based_prioritization
+  
+  database_writes:
+    max_attempts: 5
+    initial_delay: 2s
+    max_delay: 60s
+    multiplier: 2.0
+    idempotency: required
+    idempotency_key_field: ticket_id
+
+idempotency:
+  strategy: client_side_tokens
+  implementation:
+    - service: Cloud Run API
+      method: request_id_header
+      header_name: X-Request-ID
+      storage: Firestore
+      ttl: 24h
+    
+    - service: Pub/Sub
+      method: message_id_deduplication
+      window: 10m
+    
+    - service: BigQuery
+      method: merge_statement
+      example: |
+        MERGE municipal_data.raw_tickets T
+        USING (SELECT @ticket_id AS ticket_id, ...) S
+        ON T.ticket_id = S.ticket_id
+        WHEN NOT MATCHED THEN INSERT ...
+
+backoff_strategies:
+  exponential:
+    formula: min(initial_delay * (multiplier ^ attempt), max_delay)
+    jitter: true
+    jitter_factor: 0.1
+  
+  linear:
+    formula: min(initial_delay + (increment * attempt), max_delay)
+    use_for: low_priority_operations
+
+circuit_breaker:
+  vertex_ai:
+    failure_threshold: 5
+    timeout: 30s
+    reset_timeout: 60s
+    half_open_requests: 1
+    fallback_action: use_cached_prediction
+  
+  bigquery:
+    failure_threshold: 3
+    timeout: 60s
+    reset_timeout: 120s
+    fallback_action: queue_for_later
+
+dead_letter_queues:
+  - name: tickets.dlq
+    max_delivery_attempts: 5
+    retention: 7_days
+    alerting:
+      threshold: 100_messages
+      notification: on-call-engineer
+  
+  - name: ml-predictions.dlq
+    max_delivery_attempts: 3
+    retention: 3_days
+    alerting:
+      threshold: 50_messages
+      notification: ml-team
+
+timeout_configuration:
+  api_gateway:
+    request_timeout: 30s
+    idle_timeout: 60s
+  
+  cloud_run:
+    request_timeout: 60s
+    container_startup_timeout: 240s
+  
+  vertex_ai:
+    prediction_timeout: 5s
+    batch_prediction_timeout: 3600s
+  
+  dataflow:
+    window_timeout: 300s
+    pipeline_timeout: 7200s
+
+graceful_degradation:
+  scenarios:
+    - condition: vertex_ai_unavailable
+      action: use_rule_based_priority
+      priority_rules:
+        - if: category == "SANITATION" AND ward == "high_density"
+          then: score = 0.85
+        - if: category == "WATER_SUPPLY"
+          then: score = 0.80
+        - else: score = 0.50
+    
+    - condition: feature_store_unavailable
+      action: use_static_features
+      feature_defaults:
+        ward_escalation_rate_7d: 0.15
+        category_escalation_rate_30d: 0.12
+    
+    - condition: bigquery_read_timeout
+      action: serve_from_cache
+      cache_ttl: 5m
+
+monitoring:
+  retry_metrics:
+    - metric: retry_attempt_count
+      labels: [service, operation, status]
+    - metric: retry_backoff_duration
+      labels: [service, operation]
+    - metric: dlq_message_count
+      labels: [queue_name]
+  
+  alerts:
+    - name: high_retry_rate
+      condition: retry_attempt_count > 100/min
+      severity: warning
+    - name: circuit_breaker_open
+      condition: circuit_breaker_state == "OPEN"
+      severity: critical
+    - name: dlq_overflow
+      condition: dlq_message_count > 1000
+      severity: critical

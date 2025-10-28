@@ -1,0 +1,23 @@
+- id: ADR-001
+  title: Use BigQuery as primary data warehouse
+  rationale: Serverless, scales automatically, native ML integration
+  
+- id: ADR-002
+  title: Vertex AI over BQML for custom models
+  rationale: Need XGBoost, SHAP explainability, feature store
+  
+- id: ADR-003
+  title: Cloud Run for API layer
+  rationale: Auto-scales 0→100, pay-per-request, fast cold starts
+  
+- id: ADR-004
+  title: Pub/Sub for event-driven architecture
+  rationale: Decouples components, retry/DLQ built-in
+  
+- id: ADR-005
+  title: RLS policies for privacy
+  rationale: DPDP compliance, column-level masking, audit trail
+  
+- id: ADR-006
+  title: Gemini for citizen chat
+  rationale: Multilingual (Marathi), RAG support, cost-effective

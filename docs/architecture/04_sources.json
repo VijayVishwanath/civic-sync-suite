@@ -1,0 +1,90 @@
+{
+  "data_sources": [
+    {
+      "name": "citizen_tickets",
+      "type": "streaming",
+      "ingestion_frequency": "real-time",
+      "schema": {
+        "ticket_id": "STRING",
+        "citizen_id_hash": "STRING",
+        "phone_hash": "STRING",
+        "submitted_at": "TIMESTAMP",
+        "location": {
+          "ward": "STRING",
+          "pincode": "STRING",
+          "lat": "FLOAT64",
+          "lon": "FLOAT64"
+        },
+        "category": "STRING",
+        "subcategory": "STRING",
+        "description": "STRING",
+        "photos": "ARRAY<STRING>",
+        "priority_claimed": "STRING",
+        "language": "STRING",
+        "channel": "STRING"
+      },
+      "pii_fields": ["citizen_id_hash", "phone_hash"],
+      "retention": "7_years"
+    },
+    {
+      "name": "ward_features",
+      "type": "batch",
+      "ingestion_frequency": "daily",
+      "schema": {
+        "ward_id": "STRING",
+        "population_density": "FLOAT64",
+        "avg_response_time_7d": "FLOAT64",
+        "avg_response_time_30d": "FLOAT64",
+        "escalation_rate_7d": "FLOAT64",
+        "total_tickets_7d": "INT64",
+        "total_tickets_30d": "INT64",
+        "staff_count": "INT64",
+        "media_coverage_count": "INT64",
+        "vip_constituency": "BOOL",
+        "previous_floods": "BOOL",
+        "peak_season": "BOOL"
+      },
+      "update_time": "00:00 UTC"
+    },
+    {
+      "name": "department_capacity",
+      "type": "batch",
+      "ingestion_frequency": "hourly",
+      "schema": {
+        "department": "STRING",
+        "available_staff": "INT64",
+        "current_load": "INT64",
+        "avg_resolution_time": "FLOAT64",
+        "expertise_categories": "ARRAY<STRING>"
+      }
+    },
+    {
+      "name": "historical_resolutions",
+      "type": "batch",
+      "ingestion_frequency": "daily",
+      "schema": {
+        "ticket_id": "STRING",
+        "resolution_time_hours": "FLOAT64",
+        "escalated": "BOOL",
+        "citizen_satisfied": "BOOL",
+        "final_category": "STRING",
+        "assigned_department": "STRING"
+      }
+    }
+  ],
+  "target_labels": {
+    "will_escalate": {
+      "type": "BOOL",
+      "definition": "Ticket escalated within 48hrs or media attention"
+    },
+    "priority_score": {
+      "type": "FLOAT64",
+      "range": [0.0, 1.0],
+      "definition": "Composite urgency score"
+    },
+    "recommended_department": {
+      "type": "STRING",
+      "values": ["SANITATION", "ROADS", "WATER", "ELECTRICITY", "PARKS", "OTHER"]
+    }
+  }
+}

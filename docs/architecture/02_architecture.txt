@@ -1,0 +1,66 @@
+┌─────────────────────────────────────────────────────────────────┐
+│                    AI-POWERED MUNICIPAL GOVERNANCE              │
+└─────────────────────────────────────────────────────────────────┘
+
+   Citizen App          Staff Dashboard         Admin Portal
+        │                     │                       │
+        └─────────────────────┴───────────────────────┘
+                              │
+                    ┌─────────▼─────────┐
+                    │   API Gateway     │
+                    │   (mTLS, 100rps)  │
+                    └─────────┬─────────┘
+                              │
+        ┌─────────────────────┼─────────────────────┐
+        │                     │                     │
+   ┌────▼────┐         ┌──────▼──────┐      ┌──────▼──────┐
+   │ Cloud   │         │  Gemini     │      │  Vertex AI  │
+   │ Run API │◄────────┤  (RAG)      │      │  Predictor  │
+   └────┬────┘         └─────────────┘      └──────┬──────┘
+        │                                           │
+        │                                    ┌──────▼──────┐
+        │                                    │  Feature    │
+        │                                    │  Store      │
+        │                                    └──────┬──────┘
+        │                                           │
+   ┌────▼─────────────────────────────────────────┴──────┐
+   │                   Pub/Sub Topics                     │
+   │   tickets.new  │  tickets.scored  │  tickets.routed │
+   └────┬─────────────────────────────────────────────────┘
+        │
+   ┌────▼──────┐
+   │ Dataflow  │  (PII hash, enrich, feature extract)
+   │ Pipeline  │
+   └────┬──────┘
+        │
+   ┌────▼─────────────────────────────────────────────────┐
+   │              BigQuery (asia-south1)                   │
+   │  raw_tickets │ cleansed │ features │ audit_logs      │
+   │  Column-level masking + RLS policies                 │
+   └──────────────────────────────────────────────────────┘
+
+NODES:
+{
+  "citizen_app": {"type": "frontend", "tech": "React"},
+  "api_gateway": {"type": "gateway", "service": "API_Gateway", "rate_limit": "100rps"},
+  "cloud_run": {"type": "api", "service": "Cloud_Run", "autoscale": "0-100"},
+  "gemini": {"type": "llm", "model": "gemini-pro", "use": "RAG_chat"},
+  "vertex_ai": {"type": "ml", "service": "Vertex_AI", "model": "custom_xgboost"},
+  "feature_store": {"type": "features", "service": "Vertex_Feature_Store"},
+  "pubsub": {"type": "messaging", "topics": ["tickets.new", "tickets.scored", "tickets.routed"]},
+  "dataflow": {"type": "etl", "service": "Dataflow", "runner": "apache_beam"},
+  "bigquery": {"type": "warehouse", "dataset": "municipal_data", "location": "asia-south1"}
+}
+
+EDGES:
+[
+  ["citizen_app", "api_gateway"],
+  ["api_gateway", "cloud_run"],
+  ["api_gateway", "gemini"],
+  ["cloud_run", "vertex_ai"],
+  ["cloud_run", "pubsub"],
+  ["vertex_ai", "feature_store"],
+  ["pubsub", "dataflow"],
+  ["dataflow", "bigquery"],
+  ["dataflow", "feature_store"]
+]

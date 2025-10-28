@@ -1,0 +1,30 @@
+Component,DataEng,DataSci,Backend,Frontend,SecOps,PM
+BigQuery Schema,R,C,I,I,C,A
+Data Ingestion Pipeline,A,I,C,I,C,R
+PII Hashing/Masking,R,I,C,I,A,C
+Feature Engineering,C,A,I,I,I,R
+Model Training,I,A,C,I,C,R
+Model Deployment,C,R,A,I,C,I
+Feature Store,R,A,C,I,I,I
+Cloud Run API,I,C,A,I,C,R
+API Gateway Config,C,I,R,I,A,C
+Pub/Sub Topics,R,I,A,I,C,I
+Gemini RAG Integration,I,C,A,I,C,R
+React Dashboard,I,I,C,A,I,R
+Audit Logging,R,I,C,I,A,C
+RLS Policies,C,I,C,I,A,R
+CMEK Setup,I,I,I,I,A,R
+VPC-SC Perimeter,I,I,C,I,A,R
+IAM Roles,C,I,C,I,A,R
+Monitoring Alerts,R,C,C,C,A,I
+Cost Optimization,C,I,C,I,C,A
+CI/CD Pipeline,R,C,R,R,C,I
+Load Testing,C,I,R,C,C,A
+Model Drift Detection,I,A,C,I,I,R
+Consent Management,C,I,C,C,A,R
+
+Legend:
+R = Responsible (does the work)
+A = Accountable (final approval)
+C = Consulted (provides input)
+I = Informed (kept updated)

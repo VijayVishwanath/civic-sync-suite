@@ -1,0 +1,29 @@
+metrics:
+  - name: api_latency_p95
+    type: histogram
+    unit: ms
+    target: <500ms
+    labels: [endpoint, status]
+  
+  - name: ml_prediction_latency
+    type: histogram
+    target: <200ms
+  
+  - name: model_auc
+    type: gauge
+    target: ">0.75"
+  
+  - name: escalation_prediction_accuracy
+    type: gauge
+    target: ">0.85"
+
+alerts:
+  - name: HighAPILatency
+    condition: api_latency_p95 > 500ms for 5min
+    severity: warning
+    notification: on-call@municipality.gov.in
+  
+  - name: ModelDrift
+    condition: model_auc < 0.70
+    severity: critical
+    notification: ml-team@municipality.gov.in
