@@ -100,7 +100,7 @@ export default function CaseManager() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <MapPin className="h-3 w-3" />
                       {caseItem.location}
@@ -110,6 +110,16 @@ export default function CaseManager() {
                       <Calendar className="h-3 w-3" />
                       {new Date(caseItem.submittedAt).toLocaleDateString()}
                     </span>
+                    {caseItem.affectedCitizens && (
+                      <Badge variant="secondary" className="text-xs">
+                        {caseItem.affectedCitizens.toLocaleString()} citizens affected
+                      </Badge>
+                    )}
+                    {caseItem.duplicateReports && caseItem.duplicateReports > 1 && (
+                      <Badge variant="outline" className="text-xs">
+                        {caseItem.duplicateReports} duplicate reports
+                      </Badge>
+                    )}
                   </div>
 
                   <p className="text-sm line-clamp-2">{caseItem.description}</p>

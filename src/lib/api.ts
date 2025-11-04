@@ -21,6 +21,8 @@ export interface Case {
   description: string;
   submittedAt: string;
   status: "pending" | "assigned" | "resolved";
+  affectedCitizens?: number;
+  duplicateReports?: number;
 }
 
 export interface ChatResponse {
