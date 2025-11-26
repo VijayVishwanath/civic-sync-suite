@@ -9,6 +9,7 @@ export class VoiceAssistant {
   private recognition: any = null;
   private config: VoiceAssistantConfig;
   private isListening = false;
+  private shouldBeListening = false;
 
   constructor(config: VoiceAssistantConfig) {
     this.config = config;
@@ -71,7 +72,22 @@ export class VoiceAssistant {
     this.recognition.onend = () => {
       console.log('Voice recognition ended');
       this.isListening = false;
-      this.config.onListening?.(false);
+      
+      // Auto-restart if we should still be listening
+      if (this.shouldBeListening) {
+        console.log('Auto-restarting voice recognition...');
+        setTimeout(() => {
+          if (this.shouldBeListening) {
+            try {
+              this.recognition.start();
+            } catch (error) {
+              console.log('Error restarting recognition:', error);
+            }
+          }
+        }, 100);
+      } else {
+        this.config.onListening?.(false);
+      }
     };
   }
 
@@ -81,6 +97,7 @@ export class VoiceAssistant {
       return;
     }
 
+    this.shouldBeListening = true;
     try {
       this.recognition.start();
     } catch (error) {
@@ -90,6 +107,7 @@ export class VoiceAssistant {
   }
 
   stopListening() {
+    this.shouldBeListening = false;
     if (this.recognition && this.isListening) {
       this.recognition.stop();
     }
