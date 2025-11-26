@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, Send, Phone, CheckCheck, Clock } from "lucide-react";
+import { MessageCircle, Send, Phone, CheckCheck, Clock, Mic, MicOff } from "lucide-react";
+import { VoiceAssistant } from "@/utils/voiceAssistant";
+import { useToast } from "@/hooks/use-toast";
 
 const mockConversation = [
   {
@@ -21,6 +23,10 @@ const mockConversation = [
 export default function WhatsAppBot() {
   const [messages, setMessages] = useState(mockConversation);
   const [input, setInput] = useState("");
+  const [isVoiceActive, setIsVoiceActive] = useState(false);
+  const [showApiInput, setShowApiInput] = useState(true);
+  const voiceAssistantRef = useRef<VoiceAssistant | null>(null);
+  const { toast } = useToast();
 
   const quickActions = [
     "Report Pothole",
@@ -74,14 +80,151 @@ export default function WhatsAppBot() {
     }, 1000);
   };
 
+  const startVoiceAssistant = async () => {
+    try {
+      voiceAssistantRef.current = new VoiceAssistant({
+        onTranscript: (text) => {
+          // Add user's spoken text
+          setMessages((prev) => [
+            ...prev,
+            {
+              sender: "user",
+              text: text,
+              time: new Date().toLocaleTimeString("en-US", {
+                hour: "2-digit",
+                minute: "2-digit",
+              }),
+            },
+          ]);
+
+          // Generate bot response
+          setTimeout(() => {
+            let botResponse = "";
+            if (text.toLowerCase().includes("pothole")) {
+              botResponse =
+                "I can help you report a pothole. Please share: 1) Your location/ward, 2) A photo (optional). I'll create a priority case with AI analysis.";
+            } else if (text.toLowerCase().includes("track")) {
+              botResponse =
+                "To track your case, please share your Case ID (e.g., TC-2024-1234) or phone number.";
+            } else if (text.toLowerCase().includes("garbage")) {
+              botResponse =
+                "I'll help you with a garbage complaint. Please tell me your area or ward number.";
+            } else {
+              botResponse =
+                "I understand you need assistance. Please provide more details about your complaint.";
+            }
+
+            setMessages((prev) => [
+              ...prev,
+              {
+                sender: "bot",
+                text: botResponse,
+                time: new Date().toLocaleTimeString("en-US", {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                }),
+              },
+            ]);
+          }, 1000);
+        },
+        onError: (error) => {
+          toast({
+            title: "Voice Assistant Error",
+            description: error,
+            variant: "destructive",
+          });
+          setIsVoiceActive(false);
+        },
+        onListening: (listening) => {
+          setIsVoiceActive(listening);
+        }
+      });
+
+      voiceAssistantRef.current.startListening();
+      setIsVoiceActive(true);
+      setShowApiInput(false);
+      
+      toast({
+        title: "Voice Assistant Active",
+        description: "Start speaking to register your complaint",
+      });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          sender: "bot",
+          text: "🎤 Voice assistant activated! Please describe your complaint.",
+          time: new Date().toLocaleTimeString("en-US", {
+            hour: "2-digit",
+            minute: "2-digit",
+          }),
+        },
+      ]);
+    } catch (error) {
+      console.error("Failed to start voice assistant:", error);
+      toast({
+        title: "Failed to Start",
+        description: "Could not start voice assistant. Check browser support.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopVoiceAssistant = async () => {
+    if (voiceAssistantRef.current) {
+      voiceAssistantRef.current.stopListening();
+      voiceAssistantRef.current = null;
+    }
+    setIsVoiceActive(false);
+    
+    toast({
+      title: "Voice Assistant Stopped",
+      description: "Voice recording has been stopped",
+    });
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        sender: "bot",
+        text: "Voice assistant deactivated. You can continue typing or restart voice mode.",
+        time: new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-3xl font-bold">WhatsApp Bot Interface</h1>
         <p className="text-muted-foreground">
-          24/7 citizen service bot - bilingual support (English + Marathi)
+          24/7 citizen service bot with AI Voice Assistant - bilingual support (English + Marathi)
         </p>
       </div>
+
+      {showApiInput && (
+        <Card className="border-primary/50 bg-primary/5">
+          <CardContent className="p-4">
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold mb-1">🎤 Enable Voice Assistant</p>
+                <p className="text-xs text-muted-foreground">
+                  Click the button below to activate voice-based complaint registration using your browser's speech recognition
+                </p>
+              </div>
+              <Button onClick={startVoiceAssistant} className="w-full">
+                <Mic className="h-4 w-4 mr-2" />
+                Activate Voice Assistant
+              </Button>
+              <p className="text-xs text-muted-foreground">
+                Note: Requires microphone access. Works best in Chrome, Edge, or Safari.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Chat Interface */}
@@ -167,17 +310,45 @@ export default function WhatsAppBot() {
             {/* Chat Input */}
             <div className="border-t p-4 bg-gray-100 dark:bg-gray-800">
               <div className="flex gap-2">
-                <Input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={(e) => e.key === "Enter" && handleSend()}
-                  placeholder="Type a message..."
-                  className="flex-1"
-                />
-                <Button onClick={handleSend} disabled={!input.trim()}>
-                  <Send className="h-4 w-4" />
-                </Button>
+                {isVoiceActive ? (
+                  <Button 
+                    onClick={stopVoiceAssistant} 
+                    className="flex-1 bg-red-500 hover:bg-red-600 text-white"
+                  >
+                    <MicOff className="h-4 w-4 mr-2" />
+                    Stop Voice Recording
+                  </Button>
+                ) : (
+                  <>
+                    <Input
+                      value={input}
+                      onChange={(e) => setInput(e.target.value)}
+                      onKeyPress={(e) => e.key === "Enter" && handleSend()}
+                      placeholder="Type a message..."
+                      className="flex-1"
+                      disabled={isVoiceActive}
+                    />
+                    <Button onClick={handleSend} disabled={!input.trim() || isVoiceActive}>
+                      <Send className="h-4 w-4" />
+                    </Button>
+                    {!showApiInput && (
+                      <Button 
+                        onClick={startVoiceAssistant} 
+                        variant="outline"
+                        className="border-primary text-primary hover:bg-primary hover:text-white"
+                      >
+                        <Mic className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </>
+                )}
               </div>
+              {isVoiceActive && (
+                <p className="text-xs text-center text-green-600 dark:text-green-400 mt-2 flex items-center justify-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-green-600 dark:bg-green-400 animate-pulse" />
+                  Recording... Speak your complaint
+                </p>
+              )}
             </div>
           </Card>
         </div>
