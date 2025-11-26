@@ -4,8 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { MessageCircle, Send, Phone, CheckCheck, Clock, Mic, MicOff } from "lucide-react";
-import { VoiceAssistant } from "@/utils/voiceAssistant";
+import { VoiceAssistant, TextToSpeech } from "@/utils/voiceAssistant";
 import { useToast } from "@/hooks/use-toast";
+
+interface ComplaintData {
+  issueType?: string;
+  location?: string;
+  description?: string;
+  urgency?: string;
+}
 
 const mockConversation = [
   {
@@ -26,6 +33,9 @@ export default function WhatsAppBot() {
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [showApiInput, setShowApiInput] = useState(true);
   const voiceAssistantRef = useRef<VoiceAssistant | null>(null);
+  const ttsRef = useRef<TextToSpeech | null>(null);
+  const complaintDataRef = useRef<ComplaintData>({});
+  const conversationStepRef = useRef<number>(0);
   const { toast } = useToast();
 
   const quickActions = [
@@ -80,8 +90,119 @@ export default function WhatsAppBot() {
     }, 1000);
   };
 
+  const speakAndAddMessage = (text: string) => {
+    // Add message to chat
+    setMessages((prev) => [
+      ...prev,
+      {
+        sender: "bot",
+        text: text,
+        time: new Date().toLocaleTimeString("en-US", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+      },
+    ]);
+
+    // Speak the response
+    ttsRef.current?.speak(text);
+  };
+
+  const processConversationStep = (userText: string) => {
+    const step = conversationStepRef.current;
+    const complaint = complaintDataRef.current;
+
+    if (step === 0) {
+      // Initial greeting done, ask for issue type
+      const issueKeywords = {
+        pothole: ['pothole', 'road', 'hole', 'crack'],
+        garbage: ['garbage', 'waste', 'trash', 'rubbish', 'kuda'],
+        streetlight: ['light', 'lamp', 'street light', 'batti'],
+        water: ['water', 'pipe', 'leak', 'supply', 'pani'],
+        drainage: ['drain', 'drainage', 'sewage', 'nali'],
+      };
+
+      let detectedIssue = '';
+      for (const [issue, keywords] of Object.entries(issueKeywords)) {
+        if (keywords.some(keyword => userText.toLowerCase().includes(keyword))) {
+          detectedIssue = issue;
+          break;
+        }
+      }
+
+      if (detectedIssue) {
+        complaint.issueType = detectedIssue;
+        conversationStepRef.current = 1;
+        speakAndAddMessage(
+          `I understand you want to report a ${detectedIssue} issue. Can you tell me the location or area where this problem is?`
+        );
+      } else {
+        speakAndAddMessage(
+          "I can help you report issues like potholes, garbage, street lights, water problems, or drainage. What type of issue would you like to report?"
+        );
+      }
+    } else if (step === 1) {
+      // Got issue type, now get location
+      complaint.location = userText;
+      conversationStepRef.current = 2;
+      speakAndAddMessage(
+        `Thank you. Can you describe the ${complaint.issueType} problem in more detail? For example, how severe is it?`
+      );
+    } else if (step === 2) {
+      // Got location, now get description
+      complaint.description = userText;
+      conversationStepRef.current = 3;
+      
+      // Determine urgency from description
+      const urgentWords = ['urgent', 'emergency', 'danger', 'serious', 'bad', 'severe'];
+      complaint.urgency = urgentWords.some(word => userText.toLowerCase().includes(word)) 
+        ? 'high' 
+        : 'medium';
+
+      speakAndAddMessage(
+        `Got it. Let me summarize your complaint: A ${complaint.urgency} priority ${complaint.issueType} issue at ${complaint.location}. ${complaint.description}. Should I submit this complaint now? Say yes to confirm or no to cancel.`
+      );
+    } else if (step === 3) {
+      // Confirmation step
+      if (userText.toLowerCase().includes('yes') || userText.toLowerCase().includes('haan')) {
+        // Submit the complaint
+        const caseId = `TC-2024-${Math.floor(Math.random() * 9999)}`;
+        speakAndAddMessage(
+          `Perfect! Your complaint has been registered with Case ID ${caseId}. You'll receive updates via WhatsApp. The ${complaint.issueType} issue at ${complaint.location} will be reviewed within 24 hours. Is there anything else I can help you with?`
+        );
+        
+        toast({
+          title: "Complaint Registered",
+          description: `Case ID: ${caseId}`,
+        });
+
+        console.log('=== COMPLAINT LOGGED ===');
+        console.log('Case ID:', caseId);
+        console.log('Issue Type:', complaint.issueType);
+        console.log('Location:', complaint.location);
+        console.log('Description:', complaint.description);
+        console.log('Urgency:', complaint.urgency);
+        console.log('Timestamp:', new Date().toISOString());
+        console.log('=======================');
+
+        // Reset for new complaint
+        complaintDataRef.current = {};
+        conversationStepRef.current = 0;
+      } else {
+        speakAndAddMessage(
+          "No problem. The complaint has been cancelled. Would you like to start over or report a different issue?"
+        );
+        complaintDataRef.current = {};
+        conversationStepRef.current = 0;
+      }
+    }
+  };
+
   const startVoiceAssistant = async () => {
     try {
+      // Initialize TTS
+      ttsRef.current = new TextToSpeech();
+
       voiceAssistantRef.current = new VoiceAssistant({
         onTranscript: (text) => {
           // Add user's spoken text
@@ -97,35 +218,8 @@ export default function WhatsAppBot() {
             },
           ]);
 
-          // Generate bot response
-          setTimeout(() => {
-            let botResponse = "";
-            if (text.toLowerCase().includes("pothole")) {
-              botResponse =
-                "I can help you report a pothole. Please share: 1) Your location/ward, 2) A photo (optional). I'll create a priority case with AI analysis.";
-            } else if (text.toLowerCase().includes("track")) {
-              botResponse =
-                "To track your case, please share your Case ID (e.g., TC-2024-1234) or phone number.";
-            } else if (text.toLowerCase().includes("garbage")) {
-              botResponse =
-                "I'll help you with a garbage complaint. Please tell me your area or ward number.";
-            } else {
-              botResponse =
-                "I understand you need assistance. Please provide more details about your complaint.";
-            }
-
-            setMessages((prev) => [
-              ...prev,
-              {
-                sender: "bot",
-                text: botResponse,
-                time: new Date().toLocaleTimeString("en-US", {
-                  hour: "2-digit",
-                  minute: "2-digit",
-                }),
-              },
-            ]);
-          }, 1000);
+          // Process the conversation
+          processConversationStep(text);
         },
         onError: (error) => {
           toast({
@@ -149,17 +243,22 @@ export default function WhatsAppBot() {
         description: "Start speaking to register your complaint",
       });
 
+      const greeting = "Hello! I'm your municipal services assistant. I can help you report issues like potholes, garbage, street lights, water problems, or drainage. What would you like to report?";
+      
       setMessages((prev) => [
         ...prev,
         {
           sender: "bot",
-          text: "🎤 Voice assistant activated! Please describe your complaint.",
+          text: greeting,
           time: new Date().toLocaleTimeString("en-US", {
             hour: "2-digit",
             minute: "2-digit",
           }),
         },
       ]);
+
+      // Speak the greeting
+      ttsRef.current?.speak(greeting);
     } catch (error) {
       console.error("Failed to start voice assistant:", error);
       toast({
@@ -175,7 +274,15 @@ export default function WhatsAppBot() {
       voiceAssistantRef.current.stopListening();
       voiceAssistantRef.current = null;
     }
+    if (ttsRef.current) {
+      ttsRef.current.stop();
+      ttsRef.current = null;
+    }
     setIsVoiceActive(false);
+    
+    // Reset conversation state
+    complaintDataRef.current = {};
+    conversationStepRef.current = 0;
     
     toast({
       title: "Voice Assistant Stopped",
