@@ -1,7 +1,7 @@
 /// <reference types="@types/google.maps" />
 import { useEffect, useRef, useState } from "react";
 import { Input } from "@/components/ui/input";
-import { MapPin } from "lucide-react";
+import { MapPin, AlertCircle } from "lucide-react";
 
 interface LocationAutocompleteProps {
   onLocationSelect: (place: { address: string; lat: number; lng: number }) => void;
@@ -16,8 +16,16 @@ export default function LocationAutocomplete({
   const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
   const [inputValue, setInputValue] = useState("");
   const [isLoaded, setIsLoaded] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY;
+    
+    if (!apiKey) {
+      setError("Google Maps API key not configured");
+      return;
+    }
+
     // Load Google Maps JavaScript API
     const loadGoogleMapsScript = () => {
       if (window.google && window.google.maps) {
@@ -25,11 +33,19 @@ export default function LocationAutocomplete({
         return;
       }
 
+      // Check if script already exists
+      const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
+      if (existingScript) {
+        existingScript.addEventListener('load', () => setIsLoaded(true));
+        return;
+      }
+
       const script = document.createElement("script");
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&region=IN`;
       script.async = true;
       script.defer = true;
       script.onload = () => setIsLoaded(true);
+      script.onerror = () => setError("Failed to load Google Maps");
       document.head.appendChild(script);
     };
 
@@ -39,10 +55,19 @@ export default function LocationAutocomplete({
   useEffect(() => {
     if (!isLoaded || !inputRef.current) return;
 
-    // Initialize Google Places Autocomplete
+    // India bounds for faster, more relevant results
+    const indiaBounds = new google.maps.LatLngBounds(
+      new google.maps.LatLng(8.4, 68.7), // Southwest corner
+      new google.maps.LatLng(35.5, 97.25) // Northeast corner
+    );
+
+    // Initialize Google Places Autocomplete with India-specific settings
     autocompleteRef.current = new google.maps.places.Autocomplete(inputRef.current, {
-      componentRestrictions: { country: "in" }, // Restrict to India
-      fields: ["formatted_address", "geometry", "name"],
+      bounds: indiaBounds,
+      strictBounds: true,
+      componentRestrictions: { country: "in" },
+      fields: ["formatted_address", "geometry", "name", "address_components"],
+      types: ["geocode", "establishment"],
     });
 
     // Handle place selection
@@ -76,10 +101,20 @@ export default function LocationAutocomplete({
           onChange={(e) => setInputValue(e.target.value)}
           placeholder={placeholder}
           className="pl-10"
+          disabled={!isLoaded || !!error}
         />
       </div>
-      {!isLoaded && (
-        <p className="text-xs text-muted-foreground mt-1">Loading Google Maps...</p>
+      {error && (
+        <div className="flex items-center gap-1 text-xs text-destructive mt-1">
+          <AlertCircle className="h-3 w-3" />
+          <span>{error}</span>
+        </div>
+      )}
+      {!isLoaded && !error && (
+        <p className="text-xs text-muted-foreground mt-1">Loading India map...</p>
+      )}
+      {isLoaded && !error && (
+        <p className="text-xs text-muted-foreground mt-1">Type to search locations in India</p>
       )}
     </div>
   );
