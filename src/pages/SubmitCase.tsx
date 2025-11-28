@@ -6,12 +6,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Camera, MapPin, CheckCircle, AlertTriangle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import LocationAutocomplete from "@/components/LocationAutocomplete";
 
 export default function SubmitCase() {
   const { toast } = useToast();
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<any>(null);
   const [preview, setPreview] = useState<string>("");
+  const [location, setLocation] = useState<{ address: string; lat: number; lng: number } | null>(null);
 
   const mockAnalyze = () => {
     setAnalyzing(true);
@@ -131,7 +133,21 @@ export default function SubmitCase() {
           <CardContent className="space-y-4">
             <div>
               <label className="text-sm font-medium">Location / Ward</label>
-              <Input placeholder="e.g., Andheri West, Ward K/W" />
+              <LocationAutocomplete
+                placeholder="Search for a location..."
+                onLocationSelect={(place) => {
+                  setLocation(place);
+                  toast({
+                    title: "Location Selected",
+                    description: `${place.address}`,
+                  });
+                }}
+              />
+              {location && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  Selected: {location.address}
+                </p>
+              )}
             </div>
             
             <div>
