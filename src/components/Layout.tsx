@@ -8,7 +8,6 @@ const navigation = [
   { name: "Submit Case", path: "/submit", icon: Upload },
   { name: "Issue Map", path: "/map", icon: Map },
   { name: "Verification", path: "/verification", icon: CheckCircle },
-  { name: "Citizen Chat", path: "/chat", icon: MessageSquare },
   { name: "WhatsApp Bot", path: "/whatsapp", icon: MessageCircle },
   { name: "Transparency", path: "/transparency", icon: Shield },
 ];
